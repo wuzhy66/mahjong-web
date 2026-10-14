@@ -4,8 +4,8 @@ import vue from '@vitejs/plugin-vue'
 // vite.config 在 node 环境执行；typecheck 不引入 node 类型，此处窄声明即可。
 declare const process: { env: Record<string, string | undefined> }
 
-// 本地 e2e 冒烟可用 VITE_API_TARGET 指向其他后端端口（默认 8000 开发实例）。
-const apiTarget = process.env.VITE_API_TARGET ?? 'http://127.0.0.1:8000'
+// 本地 e2e 冒烟可用 VITE_API_TARGET 指向其他后端端口（默认 8866 开发实例）。
+const apiTarget = process.env.VITE_API_TARGET ?? 'http://127.0.0.1:8866'
 
 export default defineConfig({
   plugins: [vue()],

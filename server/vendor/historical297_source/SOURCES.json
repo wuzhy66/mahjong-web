@@ -1,0 +1,11 @@
+{
+  "source": "rlai-car/mahjong-competition/historical297_source",
+  "files": {
+    "oracle_wall.py": "fb5da3c06e12362a816ade8dedc5eeef0ac36f1d516d19629f1e22b8c56e82bd",
+    "__init__.py": "93bdc4f947232e9ad1d47e75ed0cb99ae431e73c870d3d3e71351848f761af41",
+    "action_scheme.py": "31526c2739fd10268fa0546a933eec51e4dcfc161012d578ed4902a36ee9fed7",
+    "observation.py": "019144b5e62987710b687338458c86fcadc0c149147b6a098758a3f4adca470b",
+    "mortal_blocks.py": "0fe91992d5492490691e12b356498f6fab768b9bf035cda25715e8c19af38ca0",
+    "public_student.py": "daf8037ff424c7c3da7a5f807398a5082cbe6721e6b210cce7e1e893f9dbc38b"
+  }
+}

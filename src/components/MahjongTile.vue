@@ -14,6 +14,8 @@ const props = withDefaults(defineProps<{
   themeName?: TileAssetTheme
   /** 本局癞子集合；未传时按现行玩法「白板」高亮 */
   jokerTiles?: TileType[]
+  /** 规则专属财神标记；未传时保留原玩法名称。 */
+  jokerLabel?: string
   /** 可替代精牌的实体牌；不参与精牌排序。 */
   wildcardTiles?: TileType[]
 }>(), { tile: 'back', hidden: false, selected: false, drawn: false, disabled: false, small: false })
@@ -51,12 +53,12 @@ const isLaizi = computed(() => (
 ))
 const isJoker = computed(() => isPrecision.value || isWhiteJoker.value || isWildcard.value || isLaizi.value)
 // 标记按身份区分：真精牌/白板翻精标「精」，替身（可代本局精牌）标「替」，广麻白板癞子标「癞」。
-const tileMarker = computed(() => (
+const tileMarker = computed(() => props.jokerLabel || (
   isPrecision.value || isWhiteJoker.value ? '精' : isWildcard.value ? '替' : isLaizi.value ? '癞' : ''
 ))
 const tileLabel = computed(() => {
   if (!isJoker.value || shownTile.value === 'back') return meta.value.name
-  const role = isPrecision.value || isWhiteJoker.value ? '精牌' : isLaizi.value ? '癞子' : '万能牌'
+  const role = props.jokerLabel ?? (isPrecision.value || isWhiteJoker.value ? '精牌' : isLaizi.value ? '癞子' : '万能牌')
   return `${meta.value.name}，${role}${isWildcard.value ? '，可代本局精牌' : ''}`
 })
 const tileStyle = computed(() => {

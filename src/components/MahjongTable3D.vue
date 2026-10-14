@@ -32,8 +32,8 @@ import { createBloodFlowWinEffects } from './table/three/bloodFlowWinEffects'
 import { cuePhase } from '../game/variants/lotus/bloodFlow/presentation'
 
 const props = withDefaults(defineProps<TableProps>(), {
-  players: () => [], localSeat: 0, currentPlayer: -1, lastDiscard: null, wall: () => [], wallHeadDrawn: 0, wallCount: 0, horses: () => [],
-  revealHands: false, winnerIndex: -1, winEffect: null, winPresentation: null,
+  cameraScale: 1, cameraPanX: 0, cameraPanY: 0, jokerLabel: '', players: () => [], localSeat: 0, currentPlayer: -1, lastDiscard: null, wall: () => [], wallHeadDrawn: 0, wallCount: 0, horses: () => [],
+  revealHands: false, showOwnHand: false, winnerIndex: -1, winEffect: null, winPresentation: null,
   jokerTiles: () => [],
   wildcardTiles: () => [],
   dealAnimation: () => ({ playerIndex: -1, count: 0, serial: 0 }),
@@ -79,8 +79,17 @@ let tableTiles: ReturnType<typeof createTableTilePresenter>
 const PLAY_AREA_OFFSET_Z = -1.65
 // 牌层（牌墙/牌河/手牌/副露/骰子）的 Z 中心：单独向本家（+z）偏移，靠近玩家侧
 function applyTableCamera(position: readonly number[]) {
-  camera.position.set(position[0], position[1], position[2])
-  camera.lookAt(0, 0, renderProfile.camera.lookAtZ)
+  const scale = props.cameraScale
+  camera.position.set(position[0], position[1] * scale, renderProfile.camera.lookAtZ + (position[2] - renderProfile.camera.lookAtZ) * scale)
+  const target = new THREE.Vector3(0, 0, renderProfile.camera.lookAtZ)
+  camera.lookAt(target)
+  camera.updateMatrixWorld()
+  // 平移量按可视高度归一化，保持不同视口与缩放下的拖动距离一致。
+  const height = 2 * camera.position.distanceTo(target) * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))
+  const offset = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0).multiplyScalar(props.cameraPanX * height)
+    .add(new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1).multiplyScalar(props.cameraPanY * height))
+  camera.position.add(offset)
+  camera.lookAt(target.add(offset))
 }
 const TILE_LAYER_Z = -1.0
 const TILE_GAP_OFFSET = TABLE_LAYOUT.tilePitch    // 手牌间隙和加杠偏移量
@@ -608,6 +617,7 @@ onMounted(async () => {
 watch(
   () => (props.players.map((player) => [
     player.hand.length,
+    player.hand.join(','),
     player.concealedTileCount,
     player.drawnTileIndex,
     player.discards.join(','),
@@ -615,6 +625,7 @@ watch(
   ]).flat() as unknown[]).concat(
     props.lastDiscard?.id,
     props.revealHands,
+    props.showOwnHand,
     props.winnerIndex,
     props.winEffect?.id,
     props.winPresentation?.winnerIndex,
@@ -670,6 +681,8 @@ watch(() => props.currentPlayer, () => {
   tableScene?.updateMachineTexture()
   invalidate()
 })
+
+watch(() => [props.cameraScale, props.cameraPanX, props.cameraPanY], invalidate)
 
 onBeforeUnmount(() => {
   destroyed = true

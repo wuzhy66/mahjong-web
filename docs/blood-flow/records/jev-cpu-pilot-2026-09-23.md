@@ -54,5 +54,5 @@ digest 共标记：blind 高置信分歧 19、hint 13；大额赔付（≥200 �
 
 ## 环境遗留
 
-- OpenJev 服务（后台任务）已停止；重启命令见设计文档 §5。模型缓存在 `C:\Users\He Guo\.cache\huggingface`（~3GB）。
+- OpenJev 服务（后台任务）已停止；重启命令见设计文档 §5。模型缓存在 `<user-home>/.cache/huggingface`（~3GB）。
 - 部署仓库在 `D:\vueprojects\OpenJev`（MIT，独立于本项目，不入库）。

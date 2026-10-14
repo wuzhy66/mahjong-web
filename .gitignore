@@ -166,3 +166,27 @@ __pycache__/
 docs/evidence/
 work/
 .dsh-vision-router/
+
+# 本应用运行文件
+.venv/
+__pycache__/
+*.pyc
+artifacts/
+
+# 本地开发、部署和测试过程记录
+/temp-docs/
+/local-strategies/
+
+# 本地凭据与部署配置
+.ssh/
+*.pem
+*.key
+credentials*.json
+secrets*.json
+deployment.local.*
+
+
+.build/
+
+# fp-rl-270 扩展按部署 Python 编译
+server/vendor/fp_rl_270/**/*.so

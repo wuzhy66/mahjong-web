@@ -47,6 +47,21 @@ function setup(meld?: Meld, action?: TableActionType) {
 afterEach(() => vi.restoreAllMocks())
 
 describe('shared normal tile animations survive state refreshes', () => {
+  it('本家摸牌并入排序且不留间距，同时保留对手牌背', () => {
+    const s = setup()
+    s.props.showOwnHand = true
+    s.props.players[0].hand = ['m1', 's3', 'm2']
+    s.props.players[0].drawnTileIndex = 2
+    s.props.players[1].hand = ['red', 'green']
+    s.presenter.rebuild()
+    expect(s.rendered.map(t => t.face)).toEqual(['m1', 'm2', 's3', null, null])
+    expect(s.rendered[2].position.x - s.rendered[1].position.x).toBeCloseTo(.685)
+    expect(s.props.players[0].hand).toEqual(['m1', 's3', 'm2'])
+    s.props.players[0].hand = ['s3', 'white']
+    s.props.players[0].drawnTileIndex = -1
+    s.presenter.rebuild()
+    expect(s.rendered.map(t => t.face)).toEqual(['s3', 'white', null, null])
+  })
   it('does not carry an unfinished discard into a restored blood-flow view', () => {
     const s = setup()
     s.props.bloodFlowPresentationKey = 'live'

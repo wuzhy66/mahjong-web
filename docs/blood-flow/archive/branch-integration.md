@@ -14,9 +14,9 @@
 
 | 工作树 | 分支 | 开始时 HEAD / 状态 |
 |---|---|---|
-| `D:/vueprojects/lianhua_guangma` | master | `d784cbf9d2e88ccb45082bf40e106a4f45c8c3a6`；仅三份血流计划文档未跟踪 |
-| `D:/vueprojects/lianhua_guangma/work/vibehub-theme11v` | vibehub | `8f728b67390e04fc4d96292d992acead9d31970e`；干净 |
-| `C:/Users/He Guo/.codex/worktrees/e6cd/lianhua_guangma` | codex/pixi-table-renderer | `9d62615b927e3791be549482fe5d924a18bb9cb3`；不属于本次实施，不操作 |
+| `<workspace>/lianhua_guangma` | master | `d784cbf9d2e88ccb45082bf40e106a4f45c8c3a6`；仅三份血流计划文档未跟踪 |
+| `<workspace>/lianhua_guangma/work/vibehub-theme11v` | vibehub | `8f728b67390e04fc4d96292d992acead9d31970e`；干净 |
+| `<worktree>/lianhua_guangma` | codex/pixi-table-renderer | `9d62615b927e3791be549482fe5d924a18bb9cb3`；不属于本次实施，不操作 |
 
 `powershell -NoProfile -File scripts/check-vibehub-ahead.ps1` 退出 0：没有 keep 清单以外、两分支同时存在的共享差异。人工检查了 `git diff master vibehub -- src/game/variants/lotus/lotusGame.ts src/game/core/contracts/gamePort.ts`：差异是 remoteControllers、无头房主、承诺牌墙、开局屏障及房主语音隔离，保留在 P2P。没有反向覆盖 master。
 

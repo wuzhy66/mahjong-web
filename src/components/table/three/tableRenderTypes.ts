@@ -6,6 +6,11 @@ import type { WinPileBatch } from './bloodFlowWinPile'
 import type { BloodFlowCue } from '../../../game/variants/lotus/bloodFlow/presentation'
 
 export interface TableProps {
+  /** 牌桌视野缩放，供独立客户端布局适配。 */
+  cameraScale?: number
+  cameraPanX?: number
+  cameraPanY?: number
+  jokerLabel?: string
   /** 血流胡牌牌堆（盖楼）：实时给完整 WinBatch，回放给按"胡"步累积的结构子集。 */
   bloodFlowBatches?: readonly WinPileBatch[]
   bloodFlowCompact?: boolean
@@ -30,6 +35,8 @@ export interface TableProps {
   /** 可替代精牌的实体牌；不计入精牌集合。 */
   wildcardTiles?: TileType[]
   revealHands?: boolean
+  /** 在近桌沿额外展示本家正面手牌；不翻开其他玩家暗手。 */
+  showOwnHand?: boolean
   winnerIndex?: number
   winEffect?: WinEffect | null
   winPresentation?: WinPresentation | null

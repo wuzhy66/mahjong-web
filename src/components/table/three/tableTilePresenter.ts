@@ -63,6 +63,9 @@ export function createTableTilePresenter(options: TableTilePresenterOptions) {
   const { props, scene, dynamicGroups, ownDynamic, clearDynamicScene, makeFaceTile, tableScene } = options
   const { tileInstances } = options
   const TILE_LAYER_Z = options.tileLayerZ
+  const oppositeHandZ = -9.53
+  // 按两侧牌墙的实际坐标镜像对家手牌，使本家与对家的离墙间距相等。
+  const ownHandWorldZ = wallStackSlot(0).z + wallStackSlot(WALL_TOTAL / 4).z - (oppositeHandZ + TILE_LAYER_Z)
   const PLAY_AREA_OFFSET_Z = options.playAreaOffsetZ
   const TILE_GAP_OFFSET = options.tileGapOffset
   const POINT_GAP_OFFSET = options.pointGapOffset
@@ -89,7 +92,21 @@ export function createTableTilePresenter(options: TableTilePresenterOptions) {
   const handFaceInstances: { seat: number; instance: ReturnType<TileInstanceRenderer['add']> }[] = []
 
 function addConcealedHand(playerIndex) {
-  if (playerIndex === 0) return
+  if (playerIndex === 0) {
+    if (!props.showOwnHand) return
+    const player = props.players[0]
+    const presentation = props.winPresentation?.winnerIndex === 0 ? props.winPresentation : null
+    const hand = splitWinningTile(player?.hand ?? [], presentation).hand
+    const width = Math.max(0, hand.length - 1) * TILE_GAP_OFFSET
+    // 近桌沿展示副本：摸牌并入排序，不改变操作区顺序或服务端手牌。
+    const standing = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0))
+    sortTilesWithJokers(hand, []).forEach((face, index) => {
+      const x = index * TILE_GAP_OFFSET - width / 2
+      const instance = addTableTile(new THREE.Vector3(x, .56, ownHandWorldZ), standing, face)
+      if (import.meta.env.DEV) handFaceInstances.push({seat: 0, instance})
+    })
+    return
+  }
   const position = ['bottom', 'right', 'top', 'left'][playerIndex]
   const rawHand = props.players[playerIndex]?.hand ?? []
   const presentation = props.winPresentation?.winnerIndex === playerIndex
@@ -152,8 +169,8 @@ function addConcealedHand(playerIndex) {
         x = (index - (arrangedTotal - 1) / 2) * gap
       }
       // 对家固定使用远端后场，避免中后局牌河向后扩展时覆盖暗牌。
-      // 对家手牌离远墙 1.21（与上家/下家手牌离墙距离一致）；副露在手牌前方（墙侧），副露时手牌变短、x 向不重叠。
-      z = -9.53
+      // 副露在手牌前方（墙侧），副露时手牌变短、x 向不重叠。
+      z = oppositeHandZ
       rotationY = props.revealHands ? Math.PI : 0
     } else {
       rotationY = props.revealHands
