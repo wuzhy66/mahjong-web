@@ -7,6 +7,7 @@ from pathlib import Path
 parser = argparse.ArgumentParser()
 parser.add_argument('--root', type=Path, default=Path.home() / 'mahjong-web')
 parser.add_argument('--port', type=int, default=8866)
+parser.add_argument('--llm-gateway-config', type=Path, help='仓库外的 LLM Gateway 凭据 JSON 文件')
 args = parser.parse_args()
 root = args.root.resolve()
 assert 1024 <= args.port <= 65535
@@ -15,6 +16,12 @@ assert (root / 'venv/bin/supervisord').is_file()
 assert ' ' not in str(root) and '%' not in str(root), '部署目录不能包含空格或 %'
 (root / 'logs').mkdir(exist_ok=True)
 config = root / 'supervisord.conf'
+environment = 'PYTHONUNBUFFERED="1",PYTHONDONTWRITEBYTECODE="1"'
+if args.llm_gateway_config:
+    credential_path = args.llm_gateway_config.resolve()
+    assert credential_path.is_file()
+    assert not any(c in str(credential_path) for c in ('"', '%', '\n', '\r', ','))
+    environment += f',LLM_GATEWAY_CONFIG_FILE="{credential_path}"'
 config.write_text(f'''[unix_http_server]
 file={root}/supervisor.sock
 chmod=0600
@@ -36,7 +43,7 @@ serverurl=unix://{root}/supervisor.sock
 [program:mahjong-web]
 directory={root}/current
 command={root}/venv/bin/python -m uvicorn server.app:app --host 0.0.0.0 --port {args.port} --workers 1 --no-access-log --limit-concurrency 32
-environment=PYTHONUNBUFFERED="1",PYTHONDONTWRITEBYTECODE="1"
+environment={environment}
 autostart=true
 autorestart=true
 startsecs=5

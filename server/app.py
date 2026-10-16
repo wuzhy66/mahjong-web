@@ -7,10 +7,14 @@ from typing import Literal
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from .rules import RULES, DEFAULT_RULE, get_rule
 from .policies import Policies, PRESETS, HINT_PRESETS
 from .rooms import Room
+from .advice import AdviceClient, AdviceError, advice_context, event
+from .decision import DecisionRequest, decide
+from .decision_repair import RepairRequest, repair
 
 class CreateRoom(BaseModel):
     rule_id: str = DEFAULT_RULE
@@ -24,12 +28,43 @@ class HintRequest(BaseModel):
     revision: int = Field(ge=0, strict=True)
     difficulty: str = Field(min_length=1, max_length=64, pattern=r'^[a-z0-9-]+$')
 
-def create_app(policies=None, *, room_factory=Room):
+def create_app(policies=None, *, room_factory=Room, advisor=None):
     app = FastAPI(title='麻将桌', docs_url=None, redoc_url=None)
     policies = policies or Policies()
+    advisor = advisor or AdviceClient()
     rooms = {}
     registry_lock = threading.RLock()
     app.state.rooms = rooms
+
+    @app.get('/api/decision/schema')
+    def decision_schema():
+        return DecisionRequest.model_json_schema()
+
+    @app.post('/api/decision')
+    def decision(body: DecisionRequest):
+        try:
+            return decide(body, policies)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except RuntimeError:
+            raise HTTPException(503, 'RL 推理失败，请稍后重试') from None
+
+    @app.post('/api/decision/repair')
+    def repaired_decision(body: RepairRequest):
+        try:
+            ready, report = repair(body)
+            result = decide(ready, policies)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except RuntimeError:
+            raise HTTPException(503, 'RL 推理失败，请稍后重试') from None
+        result['normalized_request'] = ready.model_dump()
+        result['repair'] = report
+        if report['repaired']:
+            result['warnings'].insert(0, '输入已补全或修复，决策针对假设局面，不代表原图真实局面。')
+        if report['hand_changed']:
+            result['warnings'].insert(0, '本家手牌已修改，含随机补牌或规范化；请查看 normalized_request.observation.hand。')
+        return result
 
     @app.get('/api/catalog')
     def catalog():
@@ -90,6 +125,34 @@ def create_app(policies=None, *, room_factory=Room):
                 raise HTTPException(409, str(exc)) from exc
             except RuntimeError as exc:
                 raise HTTPException(503, 'AI 提示推理失败，请稍后重试') from exc
+
+    @app.post('/api/rooms/{room_id}/hint-stream')
+    def hint_stream(room_id: str, body: HintRequest, x_room_token: str = Header(default='')):
+        room = find(room_id, x_room_token)
+        if body.difficulty not in getattr(policies, 'hint_presets', HINT_PRESETS):
+            raise HTTPException(422, '未知提示策略')
+        with room.lock:
+            try:
+                hint_data = room.hint(body.revision, body.difficulty)
+                context = advice_context(room.snapshot(), hint_data)
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from exc
+            except RuntimeError:
+                raise HTTPException(503, 'AI 提示推理失败，请稍后重试') from None
+
+        async def generate():
+            yield event('hint', hint_data)
+            try:
+                async for text in advisor.stream(context):
+                    yield event('delta', {'text': text})
+                yield event('done', {})
+            except AdviceError as exc:
+                yield event('error', {'message': str(exc)})
+            except Exception:
+                yield event('error', {'message': 'AI 建议暂时不可用，概率提示仍可使用。'})
+
+        return StreamingResponse(generate(), media_type='text/event-stream',
+                                 headers={'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no'})
 
     @app.post('/api/rooms/{room_id}/{operation}')
     def command(room_id: str, operation: Literal['action', 'advance', 'next'], body: Command, x_room_token: str = Header(default='')):

@@ -3,15 +3,27 @@ import {computed, onMounted, onBeforeUnmount, ref, watch} from 'vue'
 import TableViewport from './TableViewport.vue'
 import ReplayPanel from './ReplayPanel.vue'
 import RulesPanel from './RulesPanel.vue'
+import AdvicePanel from './AdvicePanel.vue'
 import MahjongTile from '../components/MahjongTile.vue'
-import {ApiError, request, type Catalog, type Snapshot, type Replay, type Hint} from './api'
+import {ApiError, request, streamHint, type Catalog, type Snapshot, type Replay, type Hint} from './api'
 import type {TileType} from '../game/core/contracts/types'
 import {tileName} from '../game/core/rules/tiles'
 
-const hint = ref<Hint | null>(null), hintDifficulty = ref('hard'), hintError = ref(''), hintLoading = ref(false)
+const hint = ref<Hint | null>(null), hintDifficulty = ref('astra-0'), hintError = ref(''), hintLoading = ref(false)
+const adviceText = ref(''), adviceLoading = ref(false), adviceError = ref('')
+let adviceController: AbortController | undefined
 const hintScores = computed(() => new Map(hint.value?.actions.map(a => [a.id, a.probability]) ?? []))
 const bestHintAction = computed(() => hint.value?.actions.reduce((best, a) => a.probability > best.probability ? a : best).id)
-function clearHint() {hint.value = null; hintError.value = ''}
+const recommended = computed(() => {
+  const action = room.value?.legalActions.find(a => a.id === bestHintAction.value)
+  const label = action?.kind === 'discard' && action.tile ? `建议打出「${tileName(action.tile)}」` : `建议${action?.label ?? ''}`
+  return {label, probability: hintScores.value.get(action?.id ?? -1) ?? 0}
+})
+function clearHint() {
+  adviceController?.abort(); adviceController = undefined
+  hint.value = null; hintError.value = ''; adviceText.value = ''; adviceError.value = ''
+  adviceLoading.value = false; hintLoading.value = false
+}
 watch(hintDifficulty, clearHint)
 function score(actionId?: number) {
   const value = actionId === undefined ? undefined : hintScores.value.get(actionId)
@@ -21,16 +33,33 @@ function tileScore(tile: TileType) {return score(room.value?.legalActions.find(a
 async function requestHint() {
   if (busy.value || !ownTurn.value || !room.value || replay.value) return
   const id = room.value.id, revision = room.value.revision, difficulty = hintDifficulty.value
-  busy.value = true; hintLoading.value = true; clearHint(); clearTimeout(timer)
+  clearHint(); clearTimeout(timer)
+  const controller = new AbortController(); adviceController = controller
+  busy.value = true; hintLoading.value = true; adviceLoading.value = true
   try {
-    const data = await request<Hint>(`/rooms/${id}/hint`, token, {revision, difficulty})
-    if (disposed || room.value?.id !== id || room.value.revision !== data.revision || hintDifficulty.value !== data.difficulty) return
-    hint.value = data
-    const discards = room.value.legalActions.filter(a => a.kind === 'discard')
-    const best = discards.reduce<Snapshot['legalActions'][number] | undefined>((b, a) => !b || (hintScores.value.get(a.id) ?? 0) > (hintScores.value.get(b.id) ?? 0) ? a : b, undefined)
-    selected.value = best ? hand.value.findIndex(t => t === best.tile) : -1
-  } catch(e) {hintError.value = e instanceof Error ? e.message : 'AI 提示失败，请重试'}
-  finally {busy.value = false; hintLoading.value = false; schedule()}
+    await streamHint(`/rooms/${id}/hint-stream`, token, {revision, difficulty}, controller.signal, event => {
+      if (disposed || controller.signal.aborted || room.value?.id !== id || room.value.revision !== revision || hintDifficulty.value !== difficulty) return
+      if (event.type === 'hint') {
+        if (event.data.revision !== revision || event.data.difficulty !== difficulty) throw new Error('提示状态不匹配，请重试')
+        hint.value = event.data
+        const discards = room.value.legalActions.filter(a => a.kind === 'discard')
+        const best = discards.reduce<Snapshot['legalActions'][number] | undefined>((b, a) => !b || (hintScores.value.get(a.id) ?? 0) > (hintScores.value.get(b.id) ?? 0) ? a : b, undefined)
+        selected.value = best ? hand.value.findIndex(t => t === best.tile) : -1
+        busy.value = false; hintLoading.value = false; schedule()
+      } else if (event.type === 'delta') adviceText.value += event.data.text
+      else if (event.type === 'error') {adviceError.value = event.data.message; adviceLoading.value = false}
+      else if (event.type === 'done') adviceLoading.value = false
+    })
+  } catch(e) {
+    if (controller.signal.aborted) return
+    const message = e instanceof Error ? e.message : 'AI 建议失败，请重试'
+    if (hint.value) adviceError.value = message
+    else hintError.value = message
+  } finally {
+    if (adviceController === controller) {
+      adviceController = undefined; busy.value = false; hintLoading.value = false; adviceLoading.value = false; schedule()
+    }
+  }
 }
 const replay = ref<Replay | null>(null)
 const catalog = ref<Catalog | null>(null)
@@ -90,6 +119,7 @@ async function start() {
 }
 async function command(operation: 'action' | 'advance' | 'next', action_id?: number) {
   if (busy.value || !room.value) return
+  clearHint()
   busy.value = true; error.value = ''; clearTimeout(timer)
   try {
     const data = await request<Snapshot>(`/rooms/${room.value.id}/${operation}`, token, {revision: room.value.revision, action_id})
@@ -99,6 +129,7 @@ async function command(operation: 'action' | 'advance' | 'next', action_id?: num
 }
 async function openReplay() {
   if (busy.value || !room.value) return
+  clearHint()
   busy.value = true; clearTimeout(timer); error.value = ''
   try {replay.value = await request<Replay>(`/rooms/${room.value.id}/replay`, token)}
   catch(e) {fail(e)} finally {busy.value = false}
@@ -112,6 +143,7 @@ async function retry() {
 async function leave() {
   if (!room.value || busy.value) return
   if (!room.value.finished && !window.confirm('离开会结束这张牌桌，确定返回大厅吗？')) return
+  clearHint()
   busy.value = true; clearTimeout(timer)
   try {
     await request('/rooms/' + room.value.id, token, undefined, 'DELETE')
@@ -124,7 +156,7 @@ function choose(index: number) {
   else selected.value = index
 }
 onMounted(load)
-onBeforeUnmount(() => {disposed = true; clearTimeout(timer)})
+onBeforeUnmount(() => {disposed = true; clearHint(); clearTimeout(timer)})
 </script>
 
 <template>
@@ -149,9 +181,11 @@ onBeforeUnmount(() => {disposed = true; clearTimeout(timer)})
         <div v-if="sceneError" class="scene-notice" role="alert">3D 牌桌加载失败：{{ sceneError }} <button @click="sceneError=''; ready=false; sceneKey++">重试</button></div>
         <div v-else-if="!ready" class="scene-notice">正在布置 3D 牌桌…</div>
         <div v-for="(player,i) in room.players.slice(1)" :key="player.seat" class="seat-card" :class="['seat-'+(i+1),{active: room.currentPlayer===player.seat}]" :title="player.strategy"><span class="seat-icon">{{ seats[player.seat]?.slice(0,1) }}</span><div><strong>{{ player.name }} <b v-if="room.dealer===player.seat" class="dealer">庄</b></strong><small>{{ player.strategy }}</small><span class="score">{{ signed(player.score) }} 分</span></div></div>
+        <AdvicePanel v-if="hint && !room.finished" class="desktop-advice" :recommendation="recommended.label" :probability="recommended.probability" :text="adviceText" :loading="adviceLoading" :error="adviceError"/>
       </div>
+      <AdvicePanel v-if="hint && !room.finished" class="mobile-advice" :recommendation="recommended.label" :probability="recommended.probability" :text="adviceText" :loading="adviceLoading" :error="adviceError"/>
       <div class="hand-area"><div class="hand-toolbar"><span><strong>你</strong> <b v-if="room.dealer===0" class="dealer">庄</b> <span class="muted">{{ signed(room.players[0]?.score ?? 0) }} 分</span></span><span class="turn-status" role="status">{{ status }}</span><span v-if="room.finished && !showResult"><button class="quiet" :disabled="busy" @click="openReplay">明牌复盘</button><button class="quiet" @click="showResult=true">查看结算</button></span><span v-else class="hint">{{ choices.length ? "请选择操作" : "选牌后点击出牌" }}</span></div>
-        <div v-if="!room.finished" class="ai-hint-toolbar"><label for="hint-difficulty">提示 AI</label><select id="hint-difficulty" v-model="hintDifficulty" :disabled="busy"><option v-for="d in catalog?.hintStrategies" :value="d.id" :key="d.id" :title="d.strategy">{{ d.id === 'astra-0' ? 'Astra-0 · prob-sum' : d.strategy }}</option></select><button class="action" :disabled="busy || !ownTurn" @click="requestHint">{{ hintLoading ? '正在分析…' : 'AI 提示' }}</button><span v-if="hint" class="hint-note">合法动作概率分数；同牌共享分数</span><span v-if="hintError" role="alert" class="hint-error">{{ hintError }}</span></div>
+        <div v-if="!room.finished" class="ai-hint-toolbar"><label for="hint-difficulty">提示 AI</label><select id="hint-difficulty" v-model="hintDifficulty" :disabled="busy"><option v-for="d in catalog?.hintStrategies" :value="d.id" :key="d.id" :title="d.strategy">{{ d.name }}</option></select><button class="action" :disabled="busy || !ownTurn || adviceLoading" @click="requestHint">{{ hintLoading ? '正在分析…' : 'AI 提示' }}</button><span v-if="hint" class="hint-note">合法动作概率分数；同牌共享分数</span><span v-if="hintError" role="alert" class="hint-error">{{ hintError }}</span></div>
         <div class="hand-rack"><div v-for="(tile,i) in hand" :key="i" class="hand-tile" :class="{'drawn-column':room.players[0]?.drawnTileIndex===i}"><MahjongTile :tile="tile" :selected="selected===i" :drawn="room.players[0]?.drawnTileIndex===i" :disabled="busy || !ownTurn || !room.legalActions.some(a=>a.kind==='discard' && a.tile===tile)" :joker-tiles="['white']" joker-label="财" @choose="choose(i)"/><span v-if="hint" class="tile-probability" :class="{'recommended':selected===i}">{{ tileScore(tile) }}</span></div></div>
         <div class="action-row"><button v-for="action in choices" :key="action.id" :class="[action.kind==='hu' ? 'primary' : 'action', {'suggested':hint && bestHintAction===action.id}]" :disabled="busy" @click="command('action',action.id)"><span v-for="(part,i) in action.labelParts" :key="i" :class="{'claimed-tile':part.claimed}" :title="part.claimed ? '被吃的牌' : undefined">{{ part.text }}</span><small v-if="hint" class="action-probability">{{ score(action.id) }}</small></button><button v-if="ownTurn && room.legalActions.some(a=>a.kind==='discard')" class="primary" :disabled="busy || !discard" @click="discard && command('action',discard.id)">出牌</button><span v-if="!ownTurn && !room.finished" class="muted">AI 正在决策，请稍候</span></div>
       </div>

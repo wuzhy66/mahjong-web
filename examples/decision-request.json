@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "strategy": "astra-0",
+  "observation": {
+    "rule_id": "hangzhou",
+    "seat": 0,
+    "dealer": 0,
+    "turn": 0,
+    "phase": "draw",
+    "hand": ["m1", "m2", "p3", "p4", "p8", "s1", "s2", "s4", "s5", "east", "east", "red", "red", "red"],
+    "drawn_tile": "p4",
+    "last_discard": null,
+    "drawable": 63,
+    "baotou": false,
+    "chain_count": 0,
+    "piao": 0,
+    "catch_play": false,
+    "players": [
+      {"discards": [], "melds": []},
+      {"discards": [], "melds": []},
+      {"discards": [], "melds": []},
+      {"discards": [], "melds": []}
+    ],
+    "public_events": []
+  }
+}

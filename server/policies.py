@@ -21,8 +21,6 @@ PRESETS = {
 # 提示策略独立于对手难度，Astra-0 固定采用三个成员的等权 prob-sum。
 HINT_PRESETS = {
     **PRESETS,
-    **{key: {'name': key, 'strategy': key + ' · argmax', 'models': [key]}
-       for key in ('r1-12', 'r1-14', 'r1-17')},
     'astra-0': {'name': 'Astra-0', 'strategy': 'r1-12 + r1-14 + r1-17 · prob-sum',
                 'models': ['r1-12', 'r1-14', 'r1-17']},
 }

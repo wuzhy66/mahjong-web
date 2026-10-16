@@ -10,7 +10,8 @@ from .app import create_app
 from .hangzhou import HangzhouRound
 from .policies import Policies, HINT_PRESETS
 from .rooms import Room
-from mjenv.spaces import to_id
+from mjenv.spaces import to_id, action_mask, from_id
+from mahjong.observation import encode_observation
 
 SCENARIOS = json.loads((Path(__file__).resolve().parents[1] / 'tests/arena/scenarios.json').read_text())
 
@@ -53,8 +54,18 @@ class HintTests(unittest.TestCase):
         for name in SCENARIOS:
             core = scenario(name)
             seat, actions = core.peek()
-            members = [self.policies.probabilities(key, core.game, seat, actions)
-                       for key in ('r1-12', 'r1-14', 'r1-17')]
+            # 单独成员不再开放为提示选项，直接核验三个实际模型输出的等权集成。
+            mask = np.asarray(action_mask(actions), dtype=bool)
+            obs = encode_observation(core.game, seat, mask.astype(np.float32))[None, :]
+            members = []
+            for key in ('r1-12', 'r1-14', 'r1-17'):
+                logits = self.policies.load(key).run(['logits'], {'obs': obs})[0][0]
+                values = np.exp(logits[mask].astype(np.float64) - logits[mask].max())
+                probabilities = values / values.sum()
+                member = dict.fromkeys(actions, 0.0)
+                for aid, probability in zip(np.flatnonzero(mask), probabilities):
+                    member[from_id(int(aid), actions)] += probability
+                members.append(member)
             ensemble = self.policies.probabilities('astra-0', core.game, seat, actions)
             for action in actions:
                 self.assertAlmostEqual(ensemble[action], sum(p[action] for p in members)/3, places=12)
@@ -68,7 +79,8 @@ class HintTests(unittest.TestCase):
         with TestClient(app) as client:
             catalog = client.get('/api/catalog').json()
             self.assertEqual([d['id'] for d in catalog['difficulties']], ['easy', 'medium', 'hard'])
-            self.assertEqual({d['id'] for d in catalog['hintStrategies']}, set(HINT_PRESETS))
+            self.assertEqual([(d['id'], d['name']) for d in catalog['hintStrategies']],
+                             [('easy', '简单'), ('medium', '中等'), ('hard', '困难'), ('astra-0', 'Astra-0')])
             self.assertEqual(client.post('/api/rooms', json={'difficulties':['astra-0']*3}).status_code, 422)
             created = client.post('/api/rooms', json={}).json()
             room = app.state.rooms[created['snapshot']['id']]
@@ -80,6 +92,8 @@ class HintTests(unittest.TestCase):
             self.assertEqual(client.post(path+'/hint', json=payload).status_code, 403)
             self.assertEqual(client.post(path+'/hint', headers=headers, json={**payload, 'revision':999}).status_code, 409)
             self.assertEqual(client.post(path+'/hint', headers=headers, json={**payload, 'difficulty':'bad'}).status_code, 422)
+            for removed in ('r1-12', 'r1-14', 'r1-17'):
+                self.assertEqual(client.post(path+'/hint', headers=headers, json={**payload, 'difficulty':removed}).status_code, 422)
             for difficulty in HINT_PRESETS:
                 response = client.post(path+'/hint', headers=headers, json={**payload, 'difficulty':difficulty})
                 self.assertEqual(response.status_code, 200, response.text)

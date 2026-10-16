@@ -102,6 +102,9 @@
 .replay-open{width:100%;margin-top:10px}.round-bar>.quiet{padding:0;color:var(--gold)}
 
 /* 提示只展示概率，出牌与副露仍由玩家确认。 */
+.mobile-advice{display:none}
+@media(min-width:761px){.scene:has(.desktop-advice) .seat-1{top:16px;transform:none}}
+@media(max-width:760px){.desktop-advice{display:none}.mobile-advice{display:block}}
 .ai-hint-toolbar{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin:4px 0 26px;font-size:12px}
 .ai-hint-toolbar select{padding:5px 10px}.ai-hint-toolbar .action{padding:6px 14px}
 .hint-note{color:#b6c6ba;font-size:11px}.hint-error{color:#ffb7a6}
